@@ -1,160 +1,107 @@
-repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
+repeat task.wait() until game:IsLoaded()
 task.wait(3)
+
+local BSS_PLACE = 1537690962
+local BOUNCE_PLACE = 4924922222 -- Brookhaven (для сброса привязки)
 
 local g = getgenv()
 g.VicHop = g.VicHop or {}
+if g.VicHop.running == nil then g.VicHop.running = true end
 
-local player = game:GetService("Players").LocalPlayer
 local TP = game:GetService("TeleportService")
 local UIS = game:GetService("UserInputService")
 local placeId = game.PlaceId
-
--- Состояние храним в getgenv() — живёт пока жив executor
-if g.VicHop.running == nil then g.VicHop.running = true end
-g.VicHop.lastJob = g.VicHop.lastJob or game.JobId
+local player = game:GetService("Players").LocalPlayer
 
 print("=== Vic Hop v1.1 ===")
-print("Place:", placeId, "| Job:", game.JobId)
-print("Prev:", g.VicHop.lastJob)
-print("Running:", g.VicHop.running)
+print("Place:", placeId, "Job:", game.JobId)
 
--- GUI
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "VicHopGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+-- GUI (только в BSS)
+if placeId == BSS_PLACE and player then
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "VicHopGUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = player:WaitForChild("PlayerGui")
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 300, 0, 140)
-frame.Position = UDim2.new(0, 10, 0, 10)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BackgroundTransparency = 0.2
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-frame.Parent = screenGui
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(0, 200, 0, 70)
+    f.Position = UDim2.new(0, 10, 0, 10)
+    f.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    f.BackgroundTransparency = 0.2
+    f.BorderSizePixel = 0
+    f.Active = true
+    f.Draggable = true
+    f.Parent = gui
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = frame
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 25)
-title.BackgroundTransparency = 1
-title.Text = "Vic Hop v1.1"
-title.TextColor3 = Color3.fromRGB(255, 200, 50)
-title.Font = Enum.Font.SourceSansBold
-title.TextSize = 16
-title.Parent = frame
+    local t = Instance.new("TextLabel", f)
+    t.Size = UDim2.new(1, 0, 0, 25)
+    t.BackgroundTransparency = 1
+    t.Text = "Vic Hop v1.1"
+    t.TextColor3 = Color3.fromRGB(255, 200, 50)
+    t.Font = Enum.Font.SourceSansBold
+    t.TextSize = 16
 
-local status = Instance.new("TextLabel")
-status.Name = "Status"
-status.Size = UDim2.new(1, 0, 0, 25)
-status.Position = UDim2.new(0, 0, 0, 25)
-status.BackgroundTransparency = 1
-status.Text = "Статус: Работаю..."
-status.TextColor3 = Color3.fromRGB(100, 255, 100)
-status.Font = Enum.Font.SourceSans
-status.TextSize = 14
-status.Parent = frame
+    local s = Instance.new("TextLabel", f)
+    s.Name = "Status"
+    s.Size = UDim2.new(1, 0, 0, 20)
+    s.Position = UDim2.new(0, 0, 0, 25)
+    s.BackgroundTransparency = 1
+    s.Text = "Статус: Работаю..."
+    s.TextColor3 = Color3.fromRGB(100, 255, 100)
+    s.Font = Enum.Font.SourceSans
+    s.TextSize = 13
 
-local info = Instance.new("TextLabel")
-info.Name = "Info"
-info.Size = UDim2.new(1, 0, 0, 40)
-info.Position = UDim2.new(0, 0, 0, 48)
-info.BackgroundTransparency = 1
-info.Text = "Job: " .. game.JobId:sub(1, 14)
-info.TextColor3 = Color3.fromRGB(200, 200, 200)
-info.Font = Enum.Font.SourceSans
-info.TextSize = 12
-info.TextWrapped = true
-info.Parent = frame
+    local b = Instance.new("TextButton", f)
+    b.Size = UDim2.new(1, -20, 0, 18)
+    b.Position = UDim2.new(0, 10, 0, 48)
+    b.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    b.Text = "F6: Выкл"
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.SourceSansBold
+    b.TextSize = 12
+    b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
 
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(1, -20, 0, 22)
-toggleBtn.Position = UDim2.new(0, 10, 0, 95)
-toggleBtn.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
-toggleBtn.Text = g.VicHop.running and "F6: Выключить" or "F6: Включить"
-toggleBtn.TextColor3 = Color3.new(1, 1, 1)
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 13
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Parent = frame
+    b.MouseButton1Click:Connect(function()
+        g.VicHop.running = not g.VicHop.running
+        b.Text = g.VicHop.running and "F6: Выкл" or "F6: Вкл"
+        b.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
+        s.Text = g.VicHop.running and "Статус: Работаю..." or "Статус: Остановлен"
+    end)
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 6)
-btnCorner.Parent = toggleBtn
-
-local function doHop()
-    if not g.VicHop.running then return end
-    g.VicHop.lastJob = game.JobId
-    status.Text = "Хоп..."
-    info.Text = "Хоп на новый сервер..."
-    print("[VicHop] Телепорт...")
-    task.wait(0.5)
-    TP:Teleport(placeId)
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.F6 then
+            g.VicHop.running = not g.VicHop.running
+            b.Text = g.VicHop.running and "F6: Выкл" or "F6: Вкл"
+            b.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
+            s.Text = g.VicHop.running and "Статус: Работаю..." or "Статус: Остановлен"
+        end
+    end)
 end
 
-local function start()
-    g.VicHop.running = true
-    g.VicHop.retries = 0
-    status.Text = "Статус: Работаю..."
-    toggleBtn.Text = "F6: Выключить"
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
-    print("=== Server Hop запущен ===")
-    doHop()
-end
+-- Логика хопа
+if not g.VicHop.running then print("[VicHop] Выключен"); return end
 
-local function stop()
-    g.VicHop.running = false
-    status.Text = "Статус: Остановлен"
-    toggleBtn.Text = "F6: Включить"
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-    print("=== Server Hop остановлен ===")
-end
-
-toggleBtn.MouseButton1Click:Connect(function()
-    if g.VicHop.running then stop() else start() end
-end)
-
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.F6 then
-        if g.VicHop.running then stop() else start() end
+if placeId == BSS_PLACE then
+    -- В BSS: ждём и уходим в bounce-игру
+    print("[VicHop] BSS: жду 8с...")
+    for _ = 1, 8 do
+        task.wait(1)
+        if not g.VicHop.running then return end
     end
-end)
-
--- Основная логика
-if g.VicHop.running then
-    local sameServer = (game.JobId == g.VicHop.lastJob)
-    g.VicHop.lastJob = game.JobId
-
-    if sameServer then
-        -- Всё ещё на том же сервере — ждём дольше
-        g.VicHop.retries = (g.VicHop.retries or 0) + 1
-        local waitTime = math.min(5 + g.VicHop.retries * 10, 60)
-        print("[VicHop] Тот же сервер! Жду " .. waitTime .. "с (ретрай " .. g.VicHop.retries .. ")")
-        status.Text = "Тот же сервер, жду " .. waitTime .. "с..."
-        for _ = 1, waitTime do
-            task.wait(1)
-            if not g.VicHop.running then return end
-        end
-        if g.VicHop.running then doHop() end
-    else
-        -- Новый сервер — ждём и хопаем
-        g.VicHop.retries = 0
-        print("[VicHop] Новый сервер! Жду 8с...")
-        status.Text = "Новый сервер, жду 8с..."
-        for _ = 1, 8 do
-            task.wait(1)
-            if not g.VicHop.running then return end
-        end
-        if g.VicHop.running then doHop() end
+    if g.VicHop.running then
+        print("[VicHop] BSS -> Bounce (" .. BOUNCE_PLACE .. ")")
+        TP:Teleport(BOUNCE_PLACE)
     end
 else
-    start()
+    -- В bounce-игре (или любой другой): сразу возвращаемся в BSS
+    print("[VicHop] Bounce -> BSS")
+    task.wait(0.5)
+    TP:Teleport(BSS_PLACE)
 end
 
-print("Vic Hop v1.1 | F6 — вкл/выкл")
-print("ВАЖНО: включи Auto Execute в Delta!")
-print("Скрипт сам себя перезапускает после телепорта через Auto Execute")
+print("Vic Hop v1.1 | Включи Auto Execute в Delta!")
+print("BSS -> Brookhaven -> BSS (новый сервер) -> ...")
