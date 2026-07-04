@@ -1,84 +1,115 @@
 --[[
   Vic Hop v1.1 — Bee Swarm Simulator
-  Server hop: перебор серверов в поисках Vicious Bee
+  Delta Executor compatible
 ]]
 
-local Players = game:GetService("Players")
+local player = game:GetService("Players").LocalPlayer
 local TS = game:GetService("TeleportService")
-local Http = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
-
 local GAME_ID = 1537690962
-local BOSS_NAME = "Vicious Bee"
-local CHECK_INTERVAL = 3
+local BOSS_NAMES = {"Vicious Bee", "ViciousBee"}
+local CHECKED = {}
 
-local player = Players.LocalPlayer
-local checked = {}
+-- Создаём GUI для вывода статуса
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "VicHopGui"
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 300, 0, 50)
+frame.Position = UDim2.new(0.5, -150, 0, 50)
+frame.BackgroundColor3 = Color3.new(0, 0, 0)
+frame.BackgroundTransparency = 0.3
+frame.BorderSizePixel = 0
+local txt = Instance.new("TextLabel", frame)
+txt.Size = UDim2.new(1, 0, 1, 0)
+txt.BackgroundTransparency = 1
+txt.TextColor3 = Color3.new(1, 1, 1)
+txt.TextScaled = true
+txt.Font = Enum.Font.SourceSansBold
+txt.Text = "Vic Hop: запуск..."
 
-local function notify(title, text, duration)
-    duration = duration or 5
-    StarterGui:SetCore("SendNotification", {
-        Title = title,
-        Text = text,
-        Duration = duration
-    })
+local function log(msg)
+    txt.Text = msg
+    print("[Vic Hop]", msg)
 end
 
--- Поиск Vicious Bee на сервере
+-- Поиск босса
 local function hasBoss()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj.Name == BOSS_NAME then
-            local hum = obj:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then
-                return true
+    for _, name_ in ipairs(BOSS_NAMES) do
+        for _, obj in workspace:GetDescendants() do
+            if obj:IsA("Model") and obj.Name == name_ then
+                local hum = obj:FindFirstChild("Humanoid")
+                if hum and hum.Health > 0 then
+                    return true
+                end
             end
         end
     end
     return false
 end
 
--- Получение списка серверов
-local function getServers(cursor)
-    local url = "https://games.roblox.com/v1/games/" .. GAME_ID .. "/servers/Public?limit=100"
-    if cursor then url = url .. "&cursor=" .. cursor end
-    local ok, res = pcall(Http.GetAsync, Http, url)
-    if ok then
-        return Http:JSONDecode(res)
+-- HTTP-запрос (подходит для Delta и большинства мобильных экзекуторов)
+local function httpGet(url)
+    -- Пробуем разные методы HTTP
+    local methods = {
+        function()
+            return game:GetService("HttpService"):GetAsync(url)
+        end,
+        function()
+            return syn and syn.request and syn.request({Url=url, Method="GET"}).Body
+        end,
+        function()
+            return request and request({Url=url, Method="GET"}).Body
+        end,
+        function()
+            return http and http.request and http.request("GET", url)
+        end
+    }
+    for _, method in ipairs(methods) do
+        local ok, res = pcall(method)
+        if ok and res then
+            return res
+        end
     end
     return nil
 end
 
--- Основной цикл
-notify("Vic Hop", "Начинаю поиск Vicious Bee...", 3)
-print("[Vic Hop] Поиск Vicious Bee...")
+-- Получение списка серверов
+local function getServers(cursor)
+    local url = "https://games.roblox.com/v1/games/" .. GAME_ID .. "/servers/Public?limit=100"
+    if cursor then url = url .. "&cursor=" .. cursor end
+    local data = httpGet(url)
+    if data then
+        return game:GetService("HttpService"):JSONDecode(data)
+    end
+    return nil
+end
+
+-- Старт
+log("Поиск Vicious Bee...")
 
 if hasBoss() then
-    notify("Vic Hop", "Vicious Bee уже на этом сервере!", 5)
-    print("[Vic Hop] Vicious Bee найден на текущем сервере!")
+    log("Vicious Bee уже на этом сервере!")
     return
 end
 
 while true do
     local data = getServers()
     if not data or not data.data then
-        warn("[Vic Hop] Не удалось получить список серверов")
-        wait(CHECK_INTERVAL)
+        log("Ошибка: не получен список серверов")
+        wait(3)
         continue
     end
 
-    print("[Vic Hop] Получено серверов:", #data.data)
+    log("Серверов: " .. #data.data)
 
     for _, sv in ipairs(data.data) do
-        if checked[sv.id] then continue end
-        checked[sv.id] = true
-
+        if CHECKED[sv.id] then continue end
+        CHECKED[sv.id] = true
         if sv.playing >= sv.maxPlayers then continue end
 
-        print("[Vic Hop] Телепорт на сервер:", sv.id)
-        notify("Vic Hop", "Перехожу на сервер " .. sv.id, 2)
+        log("Хоп на " .. sv.id)
         TS:TeleportToPlaceInstance(GAME_ID, sv.id, player)
         return
     end
 
-    wait(CHECK_INTERVAL)
+    wait(3)
 end
