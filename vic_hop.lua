@@ -1,23 +1,27 @@
 repeat task.wait() until game:IsLoaded()
-task.wait(3)
+task.wait(2)
 
-local BSS_PLACE = 1537690962
-local BOUNCE_PLACE = 4924922222 -- Brookhaven (для сброса привязки)
+local BSS = 1537690962
+local BOUNCE = 4924922222 -- Brookhaven
 
 local g = getgenv()
 g.VicHop = g.VicHop or {}
 if g.VicHop.running == nil then g.VicHop.running = true end
 
+local player = game:GetService("Players").LocalPlayer
 local TP = game:GetService("TeleportService")
 local UIS = game:GetService("UserInputService")
+local q = queue_on_teleport or syn.queue_on_teleport
 local placeId = game.PlaceId
-local player = game:GetService("Players").LocalPlayer
+local inBSS = (placeId == BSS)
+local inBounce = (placeId == BOUNCE)
 
 print("=== Vic Hop v1.1 ===")
 print("Place:", placeId, "Job:", game.JobId)
+print("queue_on_teleport:", q ~= nil)
 
--- GUI (только в BSS)
-if placeId == BSS_PLACE and player then
+-- GUI в BSS
+if inBSS and player then
     local gui = Instance.new("ScreenGui")
     gui.Name = "VicHopGUI"
     gui.ResetOnSpawn = false
@@ -32,16 +36,14 @@ if placeId == BSS_PLACE and player then
     f.Active = true
     f.Draggable = true
     f.Parent = gui
-
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
 
-    local t = Instance.new("TextLabel", f)
-    t.Size = UDim2.new(1, 0, 0, 25)
-    t.BackgroundTransparency = 1
-    t.Text = "Vic Hop v1.1"
-    t.TextColor3 = Color3.fromRGB(255, 200, 50)
-    t.Font = Enum.Font.SourceSansBold
-    t.TextSize = 16
+    Instance.new("TextLabel", f).Size = UDim2.new(1, 0, 0, 25)
+    Instance.new("TextLabel", f).BackgroundTransparency = 1
+    Instance.new("TextLabel", f).Text = "Vic Hop v1.1"
+    Instance.new("TextLabel", f).TextColor3 = Color3.fromRGB(255, 200, 50)
+    Instance.new("TextLabel", f).Font = Enum.Font.SourceSansBold
+    Instance.new("TextLabel", f).TextSize = 16
 
     local s = Instance.new("TextLabel", f)
     s.Name = "Status"
@@ -64,44 +66,53 @@ if placeId == BSS_PLACE and player then
     b.BorderSizePixel = 0
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
 
+    local function ui(v)
+        b.Text = v and "F6: Выкл" or "F6: Вкл"
+        b.BackgroundColor3 = v and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
+        s.Text = v and "Статус: Работаю..." or "Статус: Остановлен"
+    end
+    ui(g.VicHop.running)
+
     b.MouseButton1Click:Connect(function()
         g.VicHop.running = not g.VicHop.running
-        b.Text = g.VicHop.running and "F6: Выкл" or "F6: Вкл"
-        b.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
-        s.Text = g.VicHop.running and "Статус: Работаю..." or "Статус: Остановлен"
+        ui(g.VicHop.running)
     end)
 
     UIS.InputBegan:Connect(function(input, gp)
         if gp then return end
         if input.KeyCode == Enum.KeyCode.F6 then
             g.VicHop.running = not g.VicHop.running
-            b.Text = g.VicHop.running and "F6: Выкл" or "F6: Вкл"
-            b.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
-            s.Text = g.VicHop.running and "Статус: Работаю..." or "Статус: Остановлен"
+            ui(g.VicHop.running)
         end
     end)
 end
 
--- Логика хопа
+-- Логика
 if not g.VicHop.running then print("[VicHop] Выключен"); return end
 
-if placeId == BSS_PLACE then
-    -- В BSS: ждём и уходим в bounce-игру
-    print("[VicHop] BSS: жду 8с...")
+if inBSS then
+    -- В BSS: ждём и хопаем
+    print("[VicHop] BSS: жду 8с и хоп...")
     for _ = 1, 8 do
         task.wait(1)
         if not g.VicHop.running then return end
     end
     if g.VicHop.running then
-        print("[VicHop] BSS -> Bounce (" .. BOUNCE_PLACE .. ")")
-        TP:Teleport(BOUNCE_PLACE)
+        -- queue_on_teleport: после телепорта в BOUNCE сразу вернись в BSS
+        if q then
+            local backCode = "repeat task.wait()until game:IsLoaded() task.wait(1) game:GetService('TeleportService'):Teleport(" .. BSS .. ")"
+            q(backCode)
+        end
+        task.wait(0.5)
+        TP:Teleport(BOUNCE)
     end
+elseif inBounce then
+    -- В Brookhaven: сразу телепорт обратно в BSS (на другой сервер)
+    print("[VicHop] Brookhaven -> BSS")
+    task.wait(0.3)
+    TP:Teleport(BSS)
 else
-    -- В bounce-игре (или любой другой): сразу возвращаемся в BSS
-    print("[VicHop] Bounce -> BSS")
-    task.wait(0.5)
-    TP:Teleport(BSS_PLACE)
+    print("[VicHop] Другая игра, пропускаю")
 end
 
-print("Vic Hop v1.1 | Включи Auto Execute в Delta!")
-print("BSS -> Brookhaven -> BSS (новый сервер) -> ...")
+print("Vic Hop v1.1 | Введи скрипт в BSS")
