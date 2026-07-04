@@ -1,6 +1,3 @@
--- Vic Hop v1.1 — Bee Swarm Simulator
--- Для Delta Executor
-
 repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
 task.wait(2)
 
@@ -8,6 +5,18 @@ local player = game:GetService("Players").LocalPlayer
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 local placeId = game.PlaceId
+local q = queue_on_teleport or syn.queue_on_teleport
+
+local g = getgenv()
+g.VicHop = g.VicHop or {}
+g.VicHop.lastJob = g.VicHop.lastJob or game.JobId
+g.VicHop.running = g.VicHop.running
+if g.VicHop.running == nil then g.VicHop.running = true end
+
+print("=== Vic Hop v1.1 ===")
+print("Place:", placeId, "| Job:", game.JobId)
+print("Last Job:", g.VicHop.lastJob)
+print("Running:", g.VicHop.running)
 
 -- GUI
 local screenGui = Instance.new("ScreenGui")
@@ -16,7 +25,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 200, 0, 80)
+frame.Size = UDim2.new(0, 280, 0, 130)
 frame.Position = UDim2.new(0, 10, 0, 10)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BackgroundTransparency = 0.2
@@ -49,11 +58,23 @@ status.Font = Enum.Font.SourceSans
 status.TextSize = 14
 status.Parent = frame
 
+local info = Instance.new("TextLabel")
+info.Name = "Info"
+info.Size = UDim2.new(1, 0, 0, 40)
+info.Position = UDim2.new(0, 0, 0, 48)
+info.BackgroundTransparency = 1
+info.Text = "Job: " .. game.JobId:sub(1, 14)
+info.TextColor3 = Color3.fromRGB(200, 200, 200)
+info.Font = Enum.Font.SourceSans
+info.TextSize = 12
+info.TextWrapped = true
+info.Parent = frame
+
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(1, -20, 0, 22)
-toggleBtn.Position = UDim2.new(0, 10, 0, 55)
+toggleBtn.Position = UDim2.new(0, 10, 0, 95)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
-toggleBtn.Text = "F6: Выключить"
+toggleBtn.Text = g.VicHop.running and "F6: Выключить" or "F6: Включить"
 toggleBtn.TextColor3 = Color3.new(1, 1, 1)
 toggleBtn.Font = Enum.Font.SourceSansBold
 toggleBtn.TextSize = 13
@@ -64,77 +85,87 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleBtn
 
--- Server hop logic
-local running = true
+-- Код для queue_on_teleport (самодостаточный)
+local hopCode = [[
+repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
+task.wait(2)
+local g = getgenv()
+g.VicHop = g.VicHop or {}
+local q = queue_on_teleport or syn.queue_on_teleport
+local cur = game.JobId
+local prev = g.VicHop.lastJob or cur
+g.VicHop.lastJob = cur
 
-local function getServers()
-    local success, result = pcall(function()
-        local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?limit=100"
-        local req = request or syn.request or http_request
-        if req then
-            local resp = req({Url = url, Method = "GET"})
-            if resp and resp.StatusCode == 200 then
-                return game:GetService("HttpService"):JSONDecode(resp.Body)
-            end
-        end
-        return nil
-    end)
-    if success and result and result.data then
-        local servers = {}
-        for _, v in ipairs(result.data) do
-            if v.playing and v.maxPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
-                table.insert(servers, v.id)
-            end
-        end
-        return servers
-    end
-    return {}
+if g.VicHop.running == false then print("VicHop: остановлен"); return end
+
+if cur == prev then
+    print("VicHop: тот же сервер, хоплю через 2с...")
+    task.wait(2)
 end
 
-local function hop()
-    local servers = getServers()
-    if #servers == 0 then
-        status.Text = "Нет серверов"
-        return
+if q then q(getgenv().VicHop.hopCode) end
+task.wait(0.5)
+game:GetService("TeleportService"):Teleport(game.PlaceId)
+]]
+
+g.VicHop.hopCode = hopCode
+
+local function doHop()
+    if not g.VicHop.running then return end
+    g.VicHop.lastJob = game.JobId
+    status.Text = "Хоп..."
+    info.Text = "Хоп на новый сервер..."
+    print("[VicHop] Хоп...")
+
+    if q then
+        print("[VicHop] Ставлю queue_on_teleport")
+        q(hopCode)
+    else
+        print("[VicHop] queue_on_teleport нет, хоп без продолжения")
     end
-    local target = servers[math.random(1, #servers)]
-    status.Text = "Хоп на " .. target:sub(1, 8) .. "..."
+
     task.wait(0.5)
-    TeleportService:TeleportToPlaceInstance(placeId, target, player)
+    TeleportService:Teleport(placeId)
 end
 
 local function start()
-    running = true
+    g.VicHop.running = true
     status.Text = "Статус: Работаю..."
     toggleBtn.Text = "F6: Выключить"
     toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
-    while running do
-        hop()
-        for _ = 1, 5 do
-            task.wait(1)
-            if not running then break end
-        end
-    end
+    print("=== Server Hop запущен ===")
+    doHop()
 end
 
 local function stop()
-    running = false
+    g.VicHop.running = false
     status.Text = "Статус: Остановлен"
     toggleBtn.Text = "F6: Включить"
     toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+    print("=== Server Hop остановлен ===")
 end
 
 toggleBtn.MouseButton1Click:Connect(function()
-    if running then stop() else spawn(start) end
+    if g.VicHop.running then stop() else start() end
 end)
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
     if input.KeyCode == Enum.KeyCode.F6 then
-        if running then stop() else spawn(start) end
+        if g.VicHop.running then stop() else start() end
     end
 end)
 
-spawn(start)
+-- Автозапуск при новом сервере
+if g.VicHop.running then
+    if game.JobId ~= g.VicHop.lastJob then
+        print("[VicHop] Новый сервер, жду 5с перед следующим хопом...")
+        info.Text = "Новый сервер, жду 5с"
+        task.wait(5)
+    end
+    if g.VicHop.running then doHop() end
+else
+    start()
+end
 
-print("Vic Hop v1.1 загружен! F6 — вкл/выкл | GUI в левом верхнем углу")
+print("Vic Hop v1.1 | F6 — вкл/выкл")
