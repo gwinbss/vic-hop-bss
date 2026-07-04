@@ -1,21 +1,21 @@
 repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
-task.wait(2)
-
-local player = game:GetService("Players").LocalPlayer
-local TeleportService = game:GetService("TeleportService")
-local UserInputService = game:GetService("UserInputService")
-local placeId = game.PlaceId
-local q = queue_on_teleport or syn.queue_on_teleport
+task.wait(3)
 
 local g = getgenv()
 g.VicHop = g.VicHop or {}
-g.VicHop.lastJob = g.VicHop.lastJob or game.JobId
-g.VicHop.running = g.VicHop.running
+
+local player = game:GetService("Players").LocalPlayer
+local TP = game:GetService("TeleportService")
+local UIS = game:GetService("UserInputService")
+local placeId = game.PlaceId
+
+-- Состояние храним в getgenv() — живёт пока жив executor
 if g.VicHop.running == nil then g.VicHop.running = true end
+g.VicHop.lastJob = g.VicHop.lastJob or game.JobId
 
 print("=== Vic Hop v1.1 ===")
 print("Place:", placeId, "| Job:", game.JobId)
-print("Last Job:", g.VicHop.lastJob)
+print("Prev:", g.VicHop.lastJob)
 print("Running:", g.VicHop.running)
 
 -- GUI
@@ -25,7 +25,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 130)
+frame.Size = UDim2.new(0, 300, 0, 140)
 frame.Position = UDim2.new(0, 10, 0, 10)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BackgroundTransparency = 0.2
@@ -73,7 +73,7 @@ info.Parent = frame
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(1, -20, 0, 22)
 toggleBtn.Position = UDim2.new(0, 10, 0, 95)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+toggleBtn.BackgroundColor3 = g.VicHop.running and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 200, 80)
 toggleBtn.Text = g.VicHop.running and "F6: Выключить" or "F6: Включить"
 toggleBtn.TextColor3 = Color3.new(1, 1, 1)
 toggleBtn.Font = Enum.Font.SourceSansBold
@@ -85,51 +85,19 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleBtn
 
--- Код для queue_on_teleport (самодостаточный)
-local hopCode = [[
-repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
-task.wait(2)
-local g = getgenv()
-g.VicHop = g.VicHop or {}
-local q = queue_on_teleport or syn.queue_on_teleport
-local cur = game.JobId
-local prev = g.VicHop.lastJob or cur
-g.VicHop.lastJob = cur
-
-if g.VicHop.running == false then print("VicHop: остановлен"); return end
-
-if cur == prev then
-    print("VicHop: тот же сервер, хоплю через 2с...")
-    task.wait(2)
-end
-
-if q then q(getgenv().VicHop.hopCode) end
-task.wait(0.5)
-game:GetService("TeleportService"):Teleport(game.PlaceId)
-]]
-
-g.VicHop.hopCode = hopCode
-
 local function doHop()
     if not g.VicHop.running then return end
     g.VicHop.lastJob = game.JobId
     status.Text = "Хоп..."
     info.Text = "Хоп на новый сервер..."
-    print("[VicHop] Хоп...")
-
-    if q then
-        print("[VicHop] Ставлю queue_on_teleport")
-        q(hopCode)
-    else
-        print("[VicHop] queue_on_teleport нет, хоп без продолжения")
-    end
-
+    print("[VicHop] Телепорт...")
     task.wait(0.5)
-    TeleportService:Teleport(placeId)
+    TP:Teleport(placeId)
 end
 
 local function start()
     g.VicHop.running = true
+    g.VicHop.retries = 0
     status.Text = "Статус: Работаю..."
     toggleBtn.Text = "F6: Выключить"
     toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
@@ -149,23 +117,44 @@ toggleBtn.MouseButton1Click:Connect(function()
     if g.VicHop.running then stop() else start() end
 end)
 
-UserInputService.InputBegan:Connect(function(input, gp)
+UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.F6 then
         if g.VicHop.running then stop() else start() end
     end
 end)
 
--- Автозапуск при новом сервере
+-- Основная логика
 if g.VicHop.running then
-    if game.JobId ~= g.VicHop.lastJob then
-        print("[VicHop] Новый сервер, жду 5с перед следующим хопом...")
-        info.Text = "Новый сервер, жду 5с"
-        task.wait(5)
+    local sameServer = (game.JobId == g.VicHop.lastJob)
+    g.VicHop.lastJob = game.JobId
+
+    if sameServer then
+        -- Всё ещё на том же сервере — ждём дольше
+        g.VicHop.retries = (g.VicHop.retries or 0) + 1
+        local waitTime = math.min(5 + g.VicHop.retries * 10, 60)
+        print("[VicHop] Тот же сервер! Жду " .. waitTime .. "с (ретрай " .. g.VicHop.retries .. ")")
+        status.Text = "Тот же сервер, жду " .. waitTime .. "с..."
+        for _ = 1, waitTime do
+            task.wait(1)
+            if not g.VicHop.running then return end
+        end
+        if g.VicHop.running then doHop() end
+    else
+        -- Новый сервер — ждём и хопаем
+        g.VicHop.retries = 0
+        print("[VicHop] Новый сервер! Жду 8с...")
+        status.Text = "Новый сервер, жду 8с..."
+        for _ = 1, 8 do
+            task.wait(1)
+            if not g.VicHop.running then return end
+        end
+        if g.VicHop.running then doHop() end
     end
-    if g.VicHop.running then doHop() end
 else
     start()
 end
 
 print("Vic Hop v1.1 | F6 — вкл/выкл")
+print("ВАЖНО: включи Auto Execute в Delta!")
+print("Скрипт сам себя перезапускает после телепорта через Auto Execute")
